@@ -2,6 +2,9 @@
 data/
 runs/
 checkpoints/
+*.pt
+*.zip
+.ipynb_checkpoints/
 
 # python
 .venv/

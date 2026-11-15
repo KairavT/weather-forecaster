@@ -1,0 +1,20 @@
+{
+  "Z500": {
+    "persistence_3d": 905.9090313839287,
+    "persistence_5d": 1003.3711381658475,
+    "climatology": 1058.2522390763788,
+    "weekly_climatology": 794.7104121331049
+  },
+  "T850": {
+    "persistence_3d": 3.924191540487167,
+    "persistence_5d": 4.198942296517842,
+    "climatology": 5.349583090940061,
+    "weekly_climatology": 3.255147587759874
+  },
+  "T2M": {
+    "persistence_3d": 2.6049104311103797,
+    "persistence_5d": 2.8774798210628068,
+    "climatology": 5.888710743050175,
+    "weekly_climatology": 2.9097085466916233
+  }
+}
