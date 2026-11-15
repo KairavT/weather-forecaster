@@ -44,3 +44,49 @@ class SimpleCNN(nn.Module):
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         return self.net(x)
+
+
+class ResBlock(nn.Module):
+    """Two convolutions whose result is added to the input, so the block learns a correction."""
+
+    def __init__(self, width: int, kernel_size: int):
+        super().__init__()
+        self.norm1 = nn.GroupNorm(8, width)
+        self.conv1 = GlobeConv(width, width, kernel_size)
+        self.norm2 = nn.GroupNorm(8, width)
+        self.conv2 = GlobeConv(width, width, kernel_size)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        y = self.conv1(nn.functional.silu(self.norm1(x)))
+        y = self.conv2(nn.functional.silu(self.norm2(y)))
+        return x + y
+
+
+class ResNet(nn.Module):
+    """A deeper network for the stepping model: a stack of residual blocks at one width.
+
+    The input can have more channels than the output, because the network is also told the
+    time of day, the season and the map but only predicts the weather. The last layer starts
+    at zero, so an untrained network predicts no change at all. That is the persistence
+    forecast, a sensible place to start learning from.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        out_channels: int,
+        width: int = 128,
+        blocks: int = 8,
+        kernel_size: int = 3,
+    ):
+        super().__init__()
+        self.stem = GlobeConv(in_channels, width, kernel_size)
+        self.blocks = nn.Sequential(*(ResBlock(width, kernel_size) for _ in range(blocks)))
+        self.norm = nn.GroupNorm(8, width)
+        self.head = GlobeConv(width, out_channels, kernel_size)
+        nn.init.zeros_(self.head.conv.weight)
+        nn.init.zeros_(self.head.conv.bias)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.blocks(self.stem(x))
+        return self.head(nn.functional.silu(self.norm(x)))
