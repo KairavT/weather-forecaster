@@ -1,0 +1,16 @@
+# downloaded weather data and training outputs (large, reproducible from scripts)
+data/
+runs/
+checkpoints/
+
+# python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# macOS
+.DS_Store
