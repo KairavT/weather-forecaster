@@ -12,6 +12,10 @@ A forecast score only means something next to baselines that use no model at all
 
 The first network is the CNN from the WeatherBench paper: five 5x5 convolutions, 64 channels wide, 313,858 parameters. Longitude wraps around the globe, so each convolution pads the east edge of the map with the west edge instead of zeros.
 
+The second model, the stepper, does not jump straight to a lead time. It predicts how the atmosphere changes over 6 hours, and feeding its output back in gives a forecast for any lead time from one network: 12 steps for 3 days, 40 steps for 10 days. It reads 23 fields instead of 2: geopotential, temperature and both wind components at four heights, humidity at three, and the temperature, wind and pressure at the surface. It is also told the time of day, the season, where the land is and how high the terrain is, none of which can be read off the weather itself. The network is a residual network with 8 blocks, 128 channels wide, 2,428,055 parameters. Its last layer starts at zero, so before training it predicts no change, which is the persistence forecast.
+
+A network trained only on single steps falls apart when it is fed its own output, because it has never seen its own mistakes as input. So the stepper trains on single steps first and then on rollouts of 2, 4 and 8 steps. In a rollout every step is compared with what really happened, and the error at the last step is passed back through all the steps before it.
+
 ## Results
 
 Baselines on the 2017 to 2018 test years, next to the numbers published in the WeatherBench paper (Rasp et al. 2020, Table 2). Lower is better.
@@ -48,12 +52,15 @@ It also lands within a few percent of the published CNN. That is a match, not an
 
 Each network trained for 30 epochs on a free Colab T4 GPU, about 37 minutes per network.
 
+Stepper results will be added here once its first full training run finishes.
+
 ## Limitations
 
 - Scores are not exactly comparable to the published WeatherBench table until the data-version explanation above is checked against the original benchmark files.
 - The grid is coarse. One cell is about 600 km wide at the equator, so the model cannot see storms, fronts or anything local.
 - The first network only sees Z500 and T850 and predicts one fixed lead time per trained model.
-- Both networks ran to the 30-epoch limit with the validation loss still falling slowly, so a longer run might score a little better.
+- The stepper has not had a full training run yet, so it has no scores.
+- Both CNNs ran to the 30-epoch limit with the validation loss still falling slowly, so a longer run might score a little better.
 - Training on a laptop GPU is slow, about 2 minutes per epoch for the small CNN.
 
 ## Files
@@ -62,11 +69,15 @@ Each network trained for 30 epochs on a free Colab T4 GPU, about 37 minutes per 
 - `src/weather_forecaster/metrics.py` latitude-weighted RMSE and anomaly correlation
 - `src/weather_forecaster/baselines.py` persistence and climatology forecasts
 - `src/weather_forecaster/dataset.py` stacks channels and normalizes them for training
-- `src/weather_forecaster/models.py` the convolutional network
-- `src/weather_forecaster/train.py` training loop and scoring
+- `src/weather_forecaster/models.py` the CNN and the residual network
+- `src/weather_forecaster/train.py` training loop and scoring for the CNN
+- `src/weather_forecaster/features.py` the stepper's extra inputs: time of day, season, land and terrain
+- `src/weather_forecaster/stepper.py` the 6-hour step, rollouts and scoring at every lead time
+- `src/weather_forecaster/train_stepper.py` rollout training for the stepper
 - `scripts/` command-line entry points for downloading, baselines and training
-- `notebooks/colab_train.ipynb` runs the download and training on a free Google Colab GPU
-- `tests/` unit tests for the downloader, metrics, baselines, normalization, model and training loop
+- `notebooks/colab_train.ipynb` trains the CNN on a free Google Colab GPU
+- `notebooks/kaggle_train.ipynb` trains the stepper on a free Kaggle GPU
+- `tests/` unit tests for the downloader, metrics, baselines, normalization, models, stepper and both training loops
 - `results/` scores written by the scripts
 
 ## Tech Stack
@@ -91,3 +102,12 @@ pytest
 Training saves its progress after every epoch, so running the same command again continues an interrupted run from the last completed epoch.
 
 To train on a free GPU instead of your own machine, open `notebooks/colab_train.ipynb` in Google Colab and choose Runtime > Run all.
+
+The stepper needs more data and hours of GPU time:
+
+```
+python scripts/download.py --preset forecast --out data/era5_forecast   # about 12 GB
+python scripts/train_stepper.py
+```
+
+To train it on a free Kaggle GPU, import `notebooks/kaggle_train.ipynb` into Kaggle, set the accelerator to GPU T4 x2, turn the internet on, and choose Save Version > Save & Run All. The run continues with the tab closed.
