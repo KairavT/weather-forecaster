@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 import zarr
 
-from weather_forecaster.era5 import Channel, LocalERA5, download
+from weather_forecaster.era5 import PRESETS, Channel, LocalERA5, download
 
 N_TIME, LEVELS, N_LON, N_LAT = 50, [500, 850], 8, 4
 CHANNELS = [Channel("geopotential", 850), Channel("2m_temperature")]
@@ -48,6 +48,12 @@ def remote(tmp_path):
         (t[:, 0] * 1000 + lon[:, 0] * 10 + lat[:, 0]).astype(np.float32),
         ["time", "longitude", "latitude"],
         (10, N_LON, N_LAT),
+    )
+    add(
+        "land_sea_mask",
+        (lon[0, 0] * 10 + lat[0, 0]).astype(np.float32),
+        ["longitude", "latitude"],
+        (N_LON, N_LAT),
     )
     return group
 
@@ -126,3 +132,24 @@ def test_requests_outside_the_data_are_refused(remote, tmp_path):
 def test_a_level_on_a_surface_variable_is_refused(remote, tmp_path):
     with pytest.raises(ValueError, match="level"):
         download([Channel("2m_temperature", 500)], START, END, tmp_path / "data", remote=remote)
+
+
+def test_static_fields_are_saved_as_latitude_by_longitude(remote, tmp_path):
+    fetch(remote, tmp_path / "data", static=["land_sea_mask"])
+    data = LocalERA5(tmp_path / "data")
+    lat, lon = np.meshgrid(np.arange(N_LAT), np.arange(N_LON), indexing="ij")
+    assert data.static_fields == ["land_sea_mask"]
+    np.testing.assert_array_equal(data.static("land_sea_mask"), lon * 10 + lat)
+    with pytest.raises(ValueError, match="not downloaded"):
+        data.static("geopotential_at_surface")
+
+
+def test_a_field_that_changes_over_time_is_refused_as_static(remote, tmp_path):
+    with pytest.raises(ValueError, match="changes over time"):
+        fetch(remote, tmp_path / "data", static=["2m_temperature"])
+
+
+def test_the_forecast_preset_has_23_distinct_channels():
+    names = [channel.name for channel in PRESETS["forecast"]]
+    assert len(names) == len(set(names)) == 23
+    assert {"geopotential_500", "temperature_850", "2m_temperature"} <= set(names)

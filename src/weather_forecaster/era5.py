@@ -44,6 +44,30 @@ PRESETS: dict[str, list[Channel]] = {
         Channel("temperature", 850),
         Channel("2m_temperature"),
     ],
+    # what the stepping model reads and predicts: geopotential, temperature and both wind
+    # components at four heights, humidity where most of the moisture is, and the surface
+    "forecast": [
+        *(
+            Channel(variable, level)
+            for variable in (
+                "geopotential",
+                "temperature",
+                "u_component_of_wind",
+                "v_component_of_wind",
+            )
+            for level in (250, 500, 700, 850)
+        ),
+        *(Channel("specific_humidity", level) for level in (500, 700, 850)),
+        Channel("2m_temperature"),
+        Channel("10m_u_component_of_wind"),
+        Channel("10m_v_component_of_wind"),
+        Channel("mean_sea_level_pressure"),
+    ],
+}
+
+# fields that never change, saved once with no time axis: where the land is and how high it is
+STATIC_FIELDS: dict[str, list[str]] = {
+    "forecast": ["land_sea_mask", "geopotential_at_surface"],
 }
 
 
@@ -94,12 +118,16 @@ def download(
     end: str,
     out_dir: Path,
     *,
+    static: list[str] | tuple[str, ...] = (),
     url: str = REMOTE_URL,
     remote: zarr.Group | None = None,
     chunks_per_block: int = 8,
     log=print,
 ) -> None:
     """Download channels for start..end into out_dir. Safe to interrupt and run again.
+
+    Fields named in static have no time axis and are saved whole as static_<name>.npy.
+
 
     The remote arrays are chunked along time, and a pressure-level variable keeps all of its
     levels in the same chunk. So each variable is read once per block of chunks and every
@@ -134,6 +162,7 @@ def download(
         "latitude": latitude.tolist(),
         "longitude": longitude.tolist(),
         "channels": [],
+        "static": [],
     }
     if meta_path.exists():
         existing = json.loads(meta_path.read_text())
@@ -141,6 +170,20 @@ def download(
         if not same_span:
             raise ValueError(f"{out_dir} holds a different time range; use a new directory")
         meta["channels"] = existing["channels"]
+        meta["static"] = existing.get("static", [])
+
+    for name in static:
+        array = remote[name]
+        dims = list(array.attrs["_ARRAY_DIMENSIONS"])
+        if "time" in dims:
+            raise ValueError(f"{name} changes over time, so it is a channel, not a static field")
+        field = np.transpose(array[:], [dims.index(d) for d in ("latitude", "longitude")])
+        if np.isnan(field).any():
+            raise ValueError(f"{name} has missing values")
+        np.save(out_dir / f"static_{name}.npy", field.astype(np.float32))
+        if name not in meta["static"]:
+            meta["static"].append(name)
+    _write_json(meta_path, meta)
     # channel name -> finished blocks, each recorded as its exact [start, stop) index range
     progress: dict[str, list[list[int]]] = (
         json.loads(progress_path.read_text()) if progress_path.exists() else {}
@@ -213,6 +256,7 @@ class LocalERA5:
         self.latitude = np.asarray(meta["latitude"])
         self.longitude = np.asarray(meta["longitude"])
         self.channels: list[str] = meta["channels"]
+        self.static_fields: list[str] = meta.get("static", [])
         step = np.timedelta64(meta["time_step_hours"], "h")
         self.times = np.datetime64(meta["time_start"], "h") + step * np.arange(meta["n_time"])
 
@@ -222,6 +266,12 @@ class LocalERA5:
             # an interrupted download leaves a full-size file that is partly zeros
             raise ValueError(f"{name} is not fully downloaded in {self.root}; run the download")
         return np.load(self.root / f"{name}.npy", mmap_mode="r")
+
+    def static(self, name: str) -> np.ndarray:
+        """(latitude, longitude) array for a field that does not change over time."""
+        if name not in self.static_fields:
+            raise ValueError(f"{name} is not downloaded in {self.root}; run the download")
+        return np.load(self.root / f"static_{name}.npy")
 
     def period(self, start: str, end: str) -> slice:
         """Time slice covering start through end, both inclusive."""
