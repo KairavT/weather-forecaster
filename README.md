@@ -51,6 +51,7 @@ Neural network results will be added here once the first training runs finish.
 - `src/weather_forecaster/models.py` the convolutional network
 - `src/weather_forecaster/train.py` training loop and scoring
 - `scripts/` command-line entry points for downloading, baselines and training
+- `notebooks/colab_train.ipynb` runs the download and training on a free Google Colab GPU
 - `tests/` unit tests for the metrics, baselines, normalization and model
 - `results/` scores written by the scripts
 
@@ -72,3 +73,5 @@ python scripts/baselines.py
 python scripts/train.py --lead-days 3
 pytest
 ```
+
+To train on a free GPU instead of your own machine, open `notebooks/colab_train.ipynb` in Google Colab and choose Runtime > Run all.
