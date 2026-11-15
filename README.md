@@ -52,7 +52,7 @@ Neural network results will be added here once the first training runs finish.
 - `src/weather_forecaster/train.py` training loop and scoring
 - `scripts/` command-line entry points for downloading, baselines and training
 - `notebooks/colab_train.ipynb` runs the download and training on a free Google Colab GPU
-- `tests/` unit tests for the metrics, baselines, normalization and model
+- `tests/` unit tests for the downloader, metrics, baselines, normalization, model and training loop
 - `results/` scores written by the scripts
 
 ## Tech Stack

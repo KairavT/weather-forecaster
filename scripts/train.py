@@ -5,20 +5,17 @@ uv run python scripts/train.py --lead-days 3
 
 import argparse
 import json
-from dataclasses import asdict
 from pathlib import Path
 
-import torch
-
 from weather_forecaster.era5 import STEP_HOURS, LocalERA5
-from weather_forecaster.train import TrainConfig, score, train
+from weather_forecaster.train import TrainConfig, save_checkpoint, score, train
 
 CHANNELS = ["geopotential_500", "temperature_850"]
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the baseline CNN.")
-    parser.add_argument("--lead-days", type=int, default=3)
+    parser.add_argument("--lead-days", type=int, default=3, choices=range(1, 15), metavar="DAYS")
     parser.add_argument("--epochs", type=int, default=40)
     parser.add_argument("--data", type=Path, default=Path("data/era5_64x32"))
     parser.add_argument("--runs", type=Path, default=Path("runs"))
@@ -36,15 +33,7 @@ def main() -> None:
 
     run_dir = args.runs / name
     run_dir.mkdir(parents=True, exist_ok=True)
-    torch.save(
-        {
-            "model": result.model.state_dict(),
-            "mean": result.normalizer.mean,
-            "std": result.normalizer.std,
-            "config": asdict(config),
-        },
-        run_dir / "model.pt",
-    )
+    save_checkpoint(result, config, run_dir / "model.pt")
     (run_dir / "history.json").write_text(json.dumps(result.history, indent=2) + "\n")
 
     args.results.parent.mkdir(parents=True, exist_ok=True)

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import copy
+import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -24,6 +26,7 @@ class TrainConfig:
     learning_rate: float = 5e-4
     patience: int = 5  # stop after this many epochs without a better validation loss
     seed: int = 0
+    device: str | None = None  # None picks the fastest device available
     # the WeatherBench split: train on the past, tune on 2016, report on 2017 and 2018
     train: tuple[str, str] = ("1979-01-01T00", "2015-12-31T18")
     validation: tuple[str, str] = ("2016-01-01T00", "2016-12-31T18")
@@ -57,8 +60,10 @@ def predict(model: torch.nn.Module, inputs: torch.Tensor, batch_size: int = 1024
 
 
 def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
+    if config.lead_steps < 1:
+        raise ValueError("lead_steps must be at least 1")
     torch.manual_seed(config.seed)
-    device = pick_device()
+    device = torch.device(config.device) if config.device else pick_device()
 
     train_fields = stack_channels(data, config.channels, *config.train)
     normalizer = fit_normalizer(train_fields)
@@ -68,7 +73,10 @@ def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
 
     # the whole training set fits in memory, so batches are cut straight from one tensor
     train_x = on_device(train_fields)
+    del train_fields  # the raw copy is no longer needed and is as large as train_x
     val_x = on_device(stack_channels(data, config.channels, *config.validation))
+    if min(len(train_x), len(val_x)) <= config.lead_steps:
+        raise ValueError("the training and validation periods must be longer than the lead time")
     weights = torch.tensor(
         metrics.latitude_weights(data.latitude), dtype=torch.float32, device=device
     )[:, None]
@@ -105,6 +113,8 @@ def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
 
         val_prediction = predict(model, val_x[: -config.lead_steps])
         val_loss = weighted_mse(val_prediction, val_x[config.lead_steps :], weights).item()
+        if not math.isfinite(val_loss):
+            raise RuntimeError(f"training diverged: validation loss is {val_loss} in epoch {epoch}")
         result.history.append(
             {"epoch": epoch, "train_loss": running / n_starts, "validation_loss": val_loss}
         )
@@ -138,3 +148,32 @@ def score(
         name: metrics.rmse(prediction[:, c], truth[:, c], data.latitude)
         for c, name in enumerate(config.channels)
     }
+
+
+def save_checkpoint(result: TrainResult, config: TrainConfig, path: Path) -> None:
+    """Save the weights with everything needed to use them: normalization and settings.
+
+    Only tensors and plain Python values go in, so the file loads with PyTorch's safe
+    loader, which refuses anything that could run code.
+    """
+    torch.save(
+        {
+            "model": result.model.state_dict(),
+            "mean": result.normalizer.mean.tolist(),
+            "std": result.normalizer.std.tolist(),
+            "config": asdict(config),
+        },
+        path,
+    )
+
+
+def load_checkpoint(path: Path, device: str = "cpu") -> tuple[TrainResult, TrainConfig]:
+    """Rebuild the model and its normalizer from a file written by save_checkpoint."""
+    saved = torch.load(path, map_location=device, weights_only=True)
+    config = TrainConfig(**saved["config"])
+    model = SimpleCNN(len(config.channels)).to(device)
+    model.load_state_dict(saved["model"])
+    normalizer = Normalizer(
+        np.asarray(saved["mean"], dtype=np.float32), np.asarray(saved["std"], dtype=np.float32)
+    )
+    return TrainResult(model, normalizer), config
