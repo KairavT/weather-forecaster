@@ -60,8 +60,8 @@ def predict(model: torch.nn.Module, inputs: torch.Tensor, batch_size: int = 1024
     return torch.cat([model(inputs[i : i + batch_size]) for i in range(0, len(inputs), batch_size)])
 
 
-def _load_state(path: Path, config: TrainConfig, device: torch.device, log) -> dict | None:
-    """Read progress saved by an earlier, interrupted call to train()."""
+def load_state(path: Path, config, device: torch.device, log) -> dict | None:
+    """Read progress saved by an earlier, interrupted training run with the same settings."""
     if not path.exists():
         return None
     try:
@@ -75,7 +75,7 @@ def _load_state(path: Path, config: TrainConfig, device: torch.device, log) -> d
     return saved
 
 
-def _save_state(path: Path, state: dict) -> None:
+def save_state(path: Path, state: dict) -> None:
     """Write atomically, so being killed mid-save never leaves a broken file."""
     tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save(state, tmp)
@@ -126,7 +126,7 @@ def train(
 
     result = TrainResult(model, normalizer)
     best_loss, best_state, stale, first_epoch = float("inf"), None, 0, 1
-    saved = _load_state(state_path, config, device, log) if state_path else None
+    saved = load_state(state_path, config, device, log) if state_path else None
     if saved:
         model.load_state_dict(saved["model"])
         optimizer.load_state_dict(saved["optimizer"])
@@ -173,7 +173,7 @@ def train(
         else:
             stale += 1
         if state_path:
-            _save_state(
+            save_state(
                 state_path,
                 {
                     "config": asdict(config),
