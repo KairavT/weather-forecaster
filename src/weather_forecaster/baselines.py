@@ -31,10 +31,14 @@ def iso_week(times: np.ndarray) -> np.ndarray:
 def weekly_climatology(train: np.ndarray, train_times: np.ndarray) -> np.ndarray:
     """Average field for each calendar week, shape (54, latitude, longitude).
 
-    Indexed by ISO week number, so index 0 is unused.
+    Indexed by ISO week number, so index 0 is unused. Week 53 only exists in some years; if
+    the training data has none, it reuses week 52.
     """
     weeks = iso_week(train_times)
+    if not set(range(1, 53)) <= set(weeks.tolist()):
+        raise ValueError("training data must cover every calendar week at least once")
     fields = np.zeros((54, *train.shape[1:]))
     for week in range(1, 54):
-        fields[week] = train[weeks == week].mean(axis=0, dtype=np.float64)
+        selected = train[weeks == week]
+        fields[week] = selected.mean(axis=0, dtype=np.float64) if len(selected) else fields[52]
     return fields

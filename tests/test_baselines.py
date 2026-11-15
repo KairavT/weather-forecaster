@@ -38,3 +38,18 @@ def test_weekly_climatology_averages_only_within_each_week():
     assert by_week.shape == (54, 4, 8)
     for week in range(1, 54):
         assert np.all(by_week[week] == week)
+
+
+def test_week_53_reuses_week_52_when_the_training_years_have_none():
+    # 2017 has only 52 ISO weeks
+    times = np.datetime64("2017-01-02T00", "h") + np.timedelta64(6, "h") * np.arange(4 * 364)
+    train = baselines.iso_week(times)[:, None, None] * np.ones((1, 4, 8))
+    by_week = baselines.weekly_climatology(train, times)
+    assert np.all(by_week[53] == 52)
+    assert not np.isnan(by_week).any()
+
+
+def test_weekly_climatology_needs_a_full_year_of_training_data():
+    times = np.datetime64("2017-01-02T00", "h") + np.timedelta64(6, "h") * np.arange(40)
+    with pytest.raises(ValueError, match="every calendar week"):
+        baselines.weekly_climatology(np.ones((40, 4, 8)), times)
