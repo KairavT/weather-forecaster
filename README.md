@@ -33,13 +33,27 @@ Baselines on the 2017 to 2018 test years, next to the numbers published in the W
 
 The baselines here come out lower than the published ones, by 2 to 3 percent for Z500 and more for temperature. The likely reason is the data version. This repo uses the WeatherBench 2 copy of ERA5, which averages each coarse cell from the fine grid. The original benchmark interpolated instead, which keeps more small-scale detail and so gives larger errors. The gap is biggest for T2M, the field with the most small-scale detail, which fits that explanation. It is not confirmed yet, see Limitations.
 
-Neural network results will be added here once the first training runs finish.
+The first network on the same test years, next to the CNN in the WeatherBench paper and weekly climatology, the strongest baseline above. Each lead time is its own trained network.
+
+| Field | Lead time | This repo | Published CNN | Weekly climatology |
+|---|---|---|---|---|
+| Z500 (m^2/s^2) | 3 days | 623 | 626 | 795 |
+| Z500 (m^2/s^2) | 5 days | 740 | 757 | 795 |
+| T850 (K) | 3 days | 2.67 | 2.87 | 3.26 |
+| T850 (K) | 5 days | 3.12 | 3.37 | 3.26 |
+
+The network beats every no-model baseline at both lead times. Against weekly climatology its Z500 error is 22 percent lower at 3 days and 7 percent lower at 5 days. The lead shrinks because the atmosphere gets harder to predict the further ahead you look, while climatology is equally good at any lead time.
+
+It also lands within a few percent of the published CNN. That is a match, not an improvement. The baselines on this data version already score 2 to 8 percent lower than the published ones, and the gaps here are no larger.
+
+Each network trained for 30 epochs on a free Colab T4 GPU, about 37 minutes per network.
 
 ## Limitations
 
 - Scores are not exactly comparable to the published WeatherBench table until the data-version explanation above is checked against the original benchmark files.
 - The grid is coarse. One cell is about 600 km wide at the equator, so the model cannot see storms, fronts or anything local.
 - The first network only sees Z500 and T850 and predicts one fixed lead time per trained model.
+- Both networks ran to the 30-epoch limit with the validation loss still falling slowly, so a longer run might score a little better.
 - Training on a laptop GPU is slow, about 2 minutes per epoch for the small CNN.
 
 ## Files

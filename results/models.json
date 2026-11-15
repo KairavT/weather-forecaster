@@ -1,0 +1,18 @@
+{
+  "cnn-3d": {
+    "lead_days": 3,
+    "epochs_run": 30,
+    "test_rmse": {
+      "geopotential_500": 622.9891280480251,
+      "temperature_850": 2.667938918769193
+    }
+  },
+  "cnn-5d": {
+    "lead_days": 5,
+    "epochs_run": 30,
+    "test_rmse": {
+      "geopotential_500": 740.0322889019794,
+      "temperature_850": 3.1192285644568587
+    }
+  }
+}
