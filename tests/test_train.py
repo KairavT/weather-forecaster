@@ -90,3 +90,47 @@ def test_periods_shorter_than_the_lead_time_are_refused(data):
 def test_a_diverged_run_is_reported_as_such(data):
     with pytest.raises(RuntimeError, match="diverged"):
         train(config(learning_rate=1e30), data, log=lambda _: None)
+
+
+def test_an_interrupted_run_resumes_and_ends_identical_to_an_uninterrupted_one(data, tmp_path):
+    settings = config(epochs=4)
+    straight = train(settings, data, log=lambda _: None)
+
+    def killed_during_epoch_3(message):
+        if message.startswith("epoch   3"):
+            raise KeyboardInterrupt
+
+    state = tmp_path / "state.pt"
+    with pytest.raises(KeyboardInterrupt):
+        train(settings, data, log=killed_during_epoch_3, state_path=state)
+    messages = []
+    resumed = train(settings, data, log=messages.append, state_path=state)
+
+    assert "resuming after epoch 2" in messages
+    assert not any(message.startswith("epoch   1") for message in messages)
+    assert resumed.history == straight.history
+    weights = zip(resumed.model.state_dict().values(), straight.model.state_dict().values())
+    assert all(torch.equal(a, b) for a, b in weights)
+
+
+def test_a_finished_run_is_not_trained_again(data, tmp_path):
+    settings = config(epochs=2)
+    first = train(settings, data, log=lambda _: None, state_path=tmp_path / "state.pt")
+    messages = []
+    again = train(settings, data, log=messages.append, state_path=tmp_path / "state.pt")
+    assert not any(message.startswith("epoch") for message in messages)
+    assert again.history == first.history
+
+
+def test_saved_progress_from_other_settings_is_refused(data, tmp_path):
+    train(config(epochs=1), data, log=lambda _: None, state_path=tmp_path / "state.pt")
+    with pytest.raises(ValueError, match="different settings"):
+        train(config(epochs=2), data, state_path=tmp_path / "state.pt")
+
+
+def test_unreadable_saved_progress_starts_over(data, tmp_path):
+    (tmp_path / "state.pt").write_bytes(b"cut off mid-write")
+    messages = []
+    result = train(config(epochs=1), data, log=messages.append, state_path=tmp_path / "state.pt")
+    assert any("starting over" in message for message in messages)
+    assert len(result.history) == 1

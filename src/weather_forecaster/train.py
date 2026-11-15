@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import copy
 import math
+import pickle
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -59,7 +60,37 @@ def predict(model: torch.nn.Module, inputs: torch.Tensor, batch_size: int = 1024
     return torch.cat([model(inputs[i : i + batch_size]) for i in range(0, len(inputs), batch_size)])
 
 
-def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
+def _load_state(path: Path, config: TrainConfig, device: torch.device, log) -> dict | None:
+    """Read progress saved by an earlier, interrupted call to train()."""
+    if not path.exists():
+        return None
+    try:
+        saved = torch.load(path, map_location=device, weights_only=True)
+    # a file cut off while it was being written fails in one of these ways
+    except (OSError, EOFError, RuntimeError, pickle.UnpicklingError) as error:
+        log(f"could not read saved progress ({error}), starting over")
+        return None
+    if saved["config"] != asdict(config):
+        raise ValueError(f"{path} was saved with different settings; delete it or use a new folder")
+    return saved
+
+
+def _save_state(path: Path, state: dict) -> None:
+    """Write atomically, so being killed mid-save never leaves a broken file."""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    torch.save(state, tmp)
+    tmp.replace(path)
+
+
+def train(
+    config: TrainConfig, data: LocalERA5, log=print, state_path: Path | None = None
+) -> TrainResult:
+    """Train until the epoch limit, or until the validation loss stops improving.
+
+    With state_path, progress is saved there after every epoch, and a later call with the
+    same settings picks up after the last finished epoch instead of starting over. The
+    resumed run ends with exactly the weights an uninterrupted run would have.
+    """
     if config.lead_steps < 1:
         raise ValueError("lead_steps must be at least 1")
     torch.manual_seed(config.seed)
@@ -94,11 +125,25 @@ def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
     )
 
     result = TrainResult(model, normalizer)
-    best_loss, best_state, stale = float("inf"), None, 0
-    for epoch in range(1, config.epochs + 1):
+    best_loss, best_state, stale, first_epoch = float("inf"), None, 0, 1
+    saved = _load_state(state_path, config, device, log) if state_path else None
+    if saved:
+        model.load_state_dict(saved["model"])
+        optimizer.load_state_dict(saved["optimizer"])
+        scheduler.load_state_dict(saved["scheduler"])
+        best_loss, best_state, stale = saved["best_loss"], saved["best_state"], saved["stale"]
+        result.history = saved["history"]
+        first_epoch = saved["epoch"] + 1
+        log(f"resuming after epoch {saved['epoch']}")
+
+    for epoch in range(first_epoch, config.epochs + 1):
+        if stale >= config.patience:  # the saved run had already stopped early
+            break
         started = time.time()
         model.train()
-        order = torch.randperm(n_starts).to(device)
+        # the shuffle depends only on the seed and the epoch, so a resumed run repeats it
+        shuffle = torch.Generator().manual_seed(config.seed + epoch)
+        order = torch.randperm(n_starts, generator=shuffle).to(device)
         running = 0.0
         for i in range(0, n_starts, config.batch_size):
             starts = order[i : i + config.batch_size]
@@ -127,9 +172,24 @@ def train(config: TrainConfig, data: LocalERA5, log=print) -> TrainResult:
             best_loss, best_state, stale = val_loss, copy.deepcopy(model.state_dict()), 0
         else:
             stale += 1
-            if stale >= config.patience:
-                log(f"no improvement for {config.patience} epochs, stopping")
-                break
+        if state_path:
+            _save_state(
+                state_path,
+                {
+                    "config": asdict(config),
+                    "epoch": epoch,
+                    "model": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                    "scheduler": scheduler.state_dict(),
+                    "best_loss": best_loss,
+                    "best_state": best_state,
+                    "stale": stale,
+                    "history": result.history,
+                },
+            )
+        if stale >= config.patience:
+            log(f"no improvement for {config.patience} epochs, stopping")
+            break
 
     model.load_state_dict(best_state)
     return result

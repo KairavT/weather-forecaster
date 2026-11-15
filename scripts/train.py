@@ -27,12 +27,14 @@ def main() -> None:
         channels=CHANNELS, lead_steps=args.lead_days * 24 // STEP_HOURS, epochs=args.epochs
     )
     data = LocalERA5(args.data)
-    result = train(config, data)
+    run_dir = args.runs / name
+    run_dir.mkdir(parents=True, exist_ok=True)
+    # progress is saved here after every epoch, so an interrupted run resumes when rerun
+    state_path = run_dir / "state.pt"
+    result = train(config, data, state_path=state_path)
     test_rmse = score(result, config, data, config.test)
     print(f"{name} test RMSE:", {k: round(v, 2) for k, v in test_rmse.items()})
 
-    run_dir = args.runs / name
-    run_dir.mkdir(parents=True, exist_ok=True)
     save_checkpoint(result, config, run_dir / "model.pt")
     (run_dir / "history.json").write_text(json.dumps(result.history, indent=2) + "\n")
 
@@ -44,6 +46,7 @@ def main() -> None:
         "test_rmse": test_rmse,
     }
     args.results.write_text(json.dumps(results, indent=2) + "\n")
+    state_path.unlink(missing_ok=True)  # finished, so there is nothing left to resume
 
 
 if __name__ == "__main__":

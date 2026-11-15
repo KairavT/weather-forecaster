@@ -74,4 +74,6 @@ python scripts/train.py --lead-days 3
 pytest
 ```
 
+Training saves its progress after every epoch, so running the same command again continues an interrupted run from the last completed epoch.
+
 To train on a free GPU instead of your own machine, open `notebooks/colab_train.ipynb` in Google Colab and choose Runtime > Run all.
