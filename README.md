@@ -52,14 +52,38 @@ It also lands within a few percent of the published CNN. That is a match, not an
 
 Each network trained for 30 epochs on a free Colab T4 GPU, about 37 minutes per network.
 
-Stepper results will be added here once its first full training run finishes.
+The stepper on the same test years. One trained network gives every lead time. Weekly climatology is the same at all of them.
+
+| Field | 1 day | 3 days | 5 days | 7 days | 10 days | Weekly climatology |
+|---|---|---|---|---|---|---|
+| Z500 (m^2/s^2) | 77 | 230 | 435 | 639 | 853 | 795 |
+| T850 (K) | 0.69 | 1.27 | 2.05 | 2.83 | 3.65 | 3.26 |
+| T2M (K) | 0.75 | 1.19 | 1.69 | 2.21 | 2.79 | 2.91 |
+
+The stepper cuts the first network's Z500 error by 63 percent at 3 days and 41 percent at 5 days, and its T850 error by 52 and 34 percent. It stays ahead of weekly climatology for more than 8 days on Z500 and T850 and for all 10 days on T2M.
+
+The WeatherBench paper also scores physical forecast models, which solve the equations of the atmosphere instead of learning from data. IFS is the model of the European weather centre. T42 and T63 are that model run on coarse grids, and operational IFS is its full-resolution forecast.
+
+| Field | Lead time | Stepper | IFS T42 | IFS T63 | Operational IFS |
+|---|---|---|---|---|---|
+| Z500 (m^2/s^2) | 3 days | 230 | 489 | 268 | 154 |
+| Z500 (m^2/s^2) | 5 days | 435 | 743 | 463 | 334 |
+| T850 (K) | 3 days | 1.27 | 3.09 | 1.85 | 1.36 |
+| T850 (K) | 5 days | 2.05 | 3.83 | 2.52 | 2.03 |
+
+The IFS columns are published scores on the original benchmark data, so small gaps mean nothing. Baselines in this repo score about 3 percent lower than published for Z500 and 7 to 8 percent lower for T850. Allowing for that, the stepper is clearly ahead of IFS T42 everywhere, and ahead of IFS T63 on T850 and on Z500 at 3 days, where its error is 14 percent lower. At 5 days its Z500 error is 6 percent lower than IFS T63, which is too close to that margin to call. The operational IFS is well ahead on Z500. On T850 the two look level, but the difference is inside the margin, so the stepper is likely still behind.
+
+The rollout epochs kept improving the forecast after single-step training had levelled off. On the 2016 validation year the 3-day Z500 error stayed between 302 and 314 over the last five single-step epochs, then fell to 230 over the 16 rollout epochs. A run without rollouts is needed to say how much of that is the rollouts and how much is the extra training.
+
+The stepper trained for 32 epochs on a free Kaggle T4 GPU in 2 hours 34 minutes.
 
 ## Limitations
 
 - Scores are not exactly comparable to the published WeatherBench table until the data-version explanation above is checked against the original benchmark files.
 - The grid is coarse. One cell is about 600 km wide at the equator, so the model cannot see storms, fronts or anything local.
 - The first network only sees Z500 and T850 and predicts one fixed lead time per trained model.
-- The stepper has not had a full training run yet, so it has no scores.
+- The stepper's scores come from one training run with one random seed. Its validation score was still improving in the last epoch, so a longer run might score better.
+- How much rollout training adds is not measured yet. That needs a run without it.
 - Both CNNs ran to the 30-epoch limit with the validation loss still falling slowly, so a longer run might score a little better.
 - Training on a laptop GPU is slow, about 2 minutes per epoch for the small CNN.
 
