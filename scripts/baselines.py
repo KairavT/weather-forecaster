@@ -3,6 +3,7 @@
     uv run python scripts/baselines.py
 
 Follows the WeatherBench setup: climatologies come from 1979 to 2016, scores from 2017 to 2018.
+Persistence is also scored at every 6-hour lead time out to 10 days, for the lead-time chart.
 """
 
 import argparse
@@ -17,6 +18,7 @@ from weather_forecaster.era5 import STEP_HOURS, LocalERA5
 TRAIN = ("1979-01-01T00", "2016-12-31T18")
 TEST = ("2017-01-01T00", "2018-12-31T18")
 LEAD_DAYS = (3, 5)
+CURVE_DAYS = 10  # persistence is scored at every step out to this lead time
 
 # short name -> (local channel, unit, decimals to print)
 TARGETS = {
@@ -68,6 +70,11 @@ def score_target(data: LocalERA5, channel: str) -> dict[str, float]:
     return scores
 
 
+def persistence_curve(data: LocalERA5, channel: str, steps: int) -> list[float]:
+    truth = np.asarray(data.channel(channel)[data.period(*TEST)])
+    return baselines.persistence_rmse_by_lead(truth, data.latitude, steps)
+
+
 def to_markdown(results: dict[str, dict[str, float]]) -> str:
     lines = [
         "| Field | Baseline | This repo | Published | Difference |",
@@ -103,6 +110,12 @@ def main() -> None:
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "baselines.json").write_text(json.dumps(results, indent=2) + "\n")
     (args.out / "baselines.md").write_text(table + "\n")
+
+    steps = CURVE_DAYS * 24 // STEP_HOURS
+    curves = {"lead_hours": [STEP_HOURS * (k + 1) for k in range(steps)]}
+    for target, (channel, _, _) in TARGETS.items():
+        curves[target] = persistence_curve(data, channel, steps)
+    (args.out / "persistence_by_lead.json").write_text(json.dumps(curves, indent=2) + "\n")
 
 
 if __name__ == "__main__":

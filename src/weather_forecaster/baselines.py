@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from weather_forecaster import metrics
+
 
 def persistence(truth: np.ndarray, lead_steps: int) -> tuple[np.ndarray, np.ndarray]:
     """Forecast that the weather stays exactly as it is now.
@@ -14,6 +16,11 @@ def persistence(truth: np.ndarray, lead_steps: int) -> tuple[np.ndarray, np.ndar
     if lead_steps < 1:
         raise ValueError("lead_steps must be at least 1")
     return truth[:-lead_steps], truth[lead_steps:]
+
+
+def persistence_rmse_by_lead(truth: np.ndarray, latitude: np.ndarray, steps: int) -> list[float]:
+    """RMSE of the persistence forecast at every lead time from 1 step up to steps."""
+    return [metrics.rmse(*persistence(truth, lead), latitude) for lead in range(1, steps + 1)]
 
 
 def climatology(train: np.ndarray) -> np.ndarray:

@@ -16,6 +16,14 @@ def test_persistence_rejects_a_zero_lead():
         baselines.persistence(np.zeros((5, 4, 8)), 0)
 
 
+def test_persistence_is_scored_at_every_lead_time():
+    # the field rises by 1 every step, so persistence is off by exactly the lead
+    truth = np.arange(10.0)[:, None, None] * np.ones((1, 4, 8))
+    latitude = np.array([-60.0, -20.0, 20.0, 60.0])
+    scores = baselines.persistence_rmse_by_lead(truth, latitude, 4)
+    np.testing.assert_allclose(scores, [1.0, 2.0, 3.0, 4.0])
+
+
 def test_climatology_is_the_time_mean():
     train = np.arange(6.0)[:, None, None] * np.ones((1, 4, 8))
     assert np.all(baselines.climatology(train) == 2.5)

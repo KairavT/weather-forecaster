@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "certifi",
     "gcsfs",
+    "matplotlib>=3.11.2",
     "numpy",
     "torch>=2.15.0",
     "zarr",

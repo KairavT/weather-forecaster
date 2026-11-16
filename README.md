@@ -62,6 +62,14 @@ The stepper on the same test years. One trained network gives every lead time. W
 
 The stepper cuts the first network's Z500 error by 63 percent at 3 days and 41 percent at 5 days, and its T850 error by 52 and 34 percent. It stays ahead of weekly climatology for more than 8 days on Z500 and T850 and for all 10 days on T2M.
 
+![Forecast error at every lead time for the stepper, persistence, weekly climatology and the CNN](figures/lead_time.png)
+
+The same scores at every lead time. Each curve starts at zero because a forecast starts from the true state. The dots mark where the stepper's error reaches weekly climatology: day 9.0 on Z500 and day 8.3 on T850. Persistence zigzags on temperature because a forecast 12 hours ahead compares day with night.
+
+![Maps of Z500 one, three and five days after 17 March 2017, with what happened above and the stepper's forecast below](figures/forecast_z500.png)
+
+One forecast next to what really happened. The maps show how far Z500 is from its usual pattern for the week of the year, which is where the highs and lows are. The start date was not chosen by eye. Forecasts were started every 3 days through 2017 and 2018, 242 in all, and this is the one with the median 5-day error, so it is a typical forecast. After 1 day the forecast is hard to tell from the truth. After 5 days the large features are still in the right places, but their strength and exact position have drifted.
+
 The WeatherBench paper also scores physical forecast models, which solve the equations of the atmosphere instead of learning from data. IFS is the model of the European weather centre. T42 and T63 are that model run on coarse grids, and operational IFS is its full-resolution forecast.
 
 | Field | Lead time | Stepper | IFS T42 | IFS T63 | Operational IFS |
@@ -98,16 +106,20 @@ The stepper trained for 32 epochs on a free Kaggle T4 GPU in 2 hours 34 minutes.
 - `src/weather_forecaster/features.py` the stepper's extra inputs: time of day, season, land and terrain
 - `src/weather_forecaster/stepper.py` the 6-hour step, rollouts and scoring at every lead time
 - `src/weather_forecaster/train_stepper.py` rollout training for the stepper
-- `scripts/` command-line entry points for downloading, baselines and training
+- `src/weather_forecaster/forecast.py` runs single forecasts from a trained stepper
+- `src/weather_forecaster/plots.py` the charts and maps
+- `scripts/` command-line entry points for downloading, baselines, training and charts
 - `notebooks/colab_train.ipynb` trains the CNN on a free Google Colab GPU
 - `notebooks/kaggle_train.ipynb` trains the stepper on a free Kaggle GPU
-- `tests/` unit tests for the downloader, metrics, baselines, normalization, models, stepper and both training loops
+- `tests/` unit tests for the downloader, metrics, baselines, normalization, models, stepper, both training loops, single forecasts and the charts
 - `results/` scores written by the scripts
+- `figures/` charts and maps drawn from the scores and the trained stepper
 
 ## Tech Stack
 
 - Python, PyTorch
 - NumPy, Zarr, gcsfs
+- Matplotlib
 - pytest, ruff
 
 ## How to Run
@@ -135,3 +147,16 @@ python scripts/train_stepper.py
 ```
 
 To train it on a free Kaggle GPU, import `notebooks/kaggle_train.ipynb` into Kaggle, set the accelerator to GPU T4 x2, turn the internet on, and choose Save Version > Save & Run All. The run continues with the tab closed.
+
+To redraw the charts from the scores in `results/`:
+
+```
+python scripts/plot_results.py
+```
+
+The forecast maps need the trained stepper and the test years of its 23 fields, about 0.5 GB:
+
+```
+python scripts/download.py --preset forecast --start 2017-01-01T00 --end 2018-12-31T18 --out data/era5_forecast_test
+python scripts/plot_forecast.py --model runs/stepper/model.pt
+```
