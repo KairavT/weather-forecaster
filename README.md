@@ -62,6 +62,10 @@ The stepper on the same test years. One trained network gives every lead time. W
 
 The stepper cuts the first network's Z500 error by 63 percent at 3 days and 41 percent at 5 days, and its T850 error by 52 and 34 percent. It stays ahead of weekly climatology for more than 8 days on Z500 and T850 and for all 10 days on T2M.
 
+![Forecast error at every lead time for the stepper, persistence, weekly climatology and the CNN](figures/lead_time.png)
+
+The same scores at every lead time. Each curve starts at zero because a forecast starts from the true state. The dots mark where the stepper's error reaches weekly climatology: day 9.0 on Z500 and day 8.3 on T850. Persistence zigzags on temperature because a forecast 12 hours ahead compares day with night.
+
 The WeatherBench paper also scores physical forecast models, which solve the equations of the atmosphere instead of learning from data. IFS is the model of the European weather centre. T42 and T63 are that model run on coarse grids, and operational IFS is its full-resolution forecast.
 
 | Field | Lead time | Stepper | IFS T42 | IFS T63 | Operational IFS |
@@ -98,16 +102,19 @@ The stepper trained for 32 epochs on a free Kaggle T4 GPU in 2 hours 34 minutes.
 - `src/weather_forecaster/features.py` the stepper's extra inputs: time of day, season, land and terrain
 - `src/weather_forecaster/stepper.py` the 6-hour step, rollouts and scoring at every lead time
 - `src/weather_forecaster/train_stepper.py` rollout training for the stepper
-- `scripts/` command-line entry points for downloading, baselines and training
+- `src/weather_forecaster/plots.py` the charts
+- `scripts/` command-line entry points for downloading, baselines, training and charts
 - `notebooks/colab_train.ipynb` trains the CNN on a free Google Colab GPU
 - `notebooks/kaggle_train.ipynb` trains the stepper on a free Kaggle GPU
-- `tests/` unit tests for the downloader, metrics, baselines, normalization, models, stepper and both training loops
+- `tests/` unit tests for the downloader, metrics, baselines, normalization, models, stepper, both training loops and the charts
 - `results/` scores written by the scripts
+- `figures/` charts drawn from those scores
 
 ## Tech Stack
 
 - Python, PyTorch
 - NumPy, Zarr, gcsfs
+- Matplotlib
 - pytest, ruff
 
 ## How to Run
@@ -135,3 +142,9 @@ python scripts/train_stepper.py
 ```
 
 To train it on a free Kaggle GPU, import `notebooks/kaggle_train.ipynb` into Kaggle, set the accelerator to GPU T4 x2, turn the internet on, and choose Save Version > Save & Run All. The run continues with the tab closed.
+
+To redraw the charts from the scores in `results/`:
+
+```
+python scripts/plot_results.py
+```
