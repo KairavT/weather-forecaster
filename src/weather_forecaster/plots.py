@@ -9,6 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import numpy as np
+from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.figure import Figure
 from matplotlib.lines import Line2D
 from matplotlib.ticker import FuncFormatter, MaxNLocator
@@ -22,6 +23,11 @@ AXIS = "#c3c2b7"
 BLUE = "#2a78d6"  # the model the chart is about
 ORANGE = "#eb6834"  # the model it is compared with
 FONTS = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
+# for maps of a difference: blue below zero, red above, light grey where there is none
+BELOW = ["#0d366b", "#1c5cab", "#3987e5", "#86b6ef", "#cde2fb"]
+NEUTRAL = "#f0efec"
+ABOVE = ["#f8d0cc", "#f09a94", "#e34948", "#b52a2c", "#7a1518"]
+COAST = "#3a3a38"
 
 
 @dataclass(frozen=True)
@@ -185,4 +191,96 @@ def lead_time_chart(lead_hours: list[int], panels: list[Panel]) -> Figure:
         prop={"family": FONTS, "size": 10},
         labelcolor=SECONDARY_INK,
     )
+    return figure
+
+
+def atlantic_view(longitude: np.ndarray, field: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Reorder the columns to run from 180 W to 180 E, the way most world maps are drawn.
+
+    The data runs east from Greenwich, which would cut Europe and Africa in half. The first
+    column is repeated at the end so the map closes at the date line.
+    """
+    shift = int(np.searchsorted(longitude, 180))
+    east, west = field[..., :shift], field[..., shift:]
+    centred = np.concatenate([west, east, west[..., :1]], axis=-1)
+    return np.concatenate([longitude[shift:] - 360, longitude[:shift], [longitude[shift]]]), centred
+
+
+def forecast_maps(
+    longitude: np.ndarray,
+    latitude: np.ndarray,
+    truth: np.ndarray,
+    forecast: np.ndarray,
+    land: np.ndarray,
+    *,
+    headings: list[str],
+    notes: list[str],
+    band: float,
+    title: str,
+    subtitle: str,
+    scale_label: str,
+) -> Figure:
+    """What happened on top, what was forecast below, one column per lead time.
+
+    truth and forecast hold one (latitude, longitude) map per column, as differences from the
+    usual pattern, so highs and lows stand out. band is the width of one colour step. land is
+    the land-sea mask, which draws the coastlines.
+    """
+    columns = len(headings)
+    levels = band * (np.arange(-5, 5) + 0.5)
+    colours = ListedColormap([*BELOW[1:], NEUTRAL, *ABOVE[:-1]]).with_extremes(
+        under=BELOW[0], over=ABOVE[-1]
+    )
+    norm = BoundaryNorm(levels, colours.N)
+    east, coast = atlantic_view(longitude, land)
+
+    figure = Figure(figsize=(10.8, 5.5), dpi=200, facecolor=SURFACE)
+    grid = figure.add_gridspec(
+        2, columns, left=0.045, right=0.985, top=0.81, bottom=0.215, wspace=0.04, hspace=0.07
+    )
+    for row, (maps, name) in enumerate(((truth, "What happened"), (forecast, "Forecast"))):
+        for column in range(columns):
+            axes = figure.add_subplot(grid[row, column])
+            _, field = atlantic_view(longitude, maps[column])
+            filled = axes.contourf(
+                east, latitude, field, levels=levels, cmap=colours, norm=norm, extend="both"
+            )
+            axes.contour(east, latitude, coast, levels=[0.5], colors=COAST, linewidths=0.55)
+            axes.set_aspect("equal")
+            axes.set_xlim(east[0], east[-1])
+            axes.set_ylim(latitude[0], latitude[-1])
+            axes.set_xticks([])
+            axes.set_yticks([])
+            for spine in axes.spines.values():
+                spine.set_color(AXIS)
+                spine.set_linewidth(0.6)
+            if row == 0:
+                axes.set_title(
+                    headings[column], loc="left", color=INK, fontsize=11, family=FONTS, pad=7
+                )
+            else:
+                _text(axes, 0, -0.035, notes[column], transform=axes.transAxes, va="top")
+            if column == 0:
+                _text(
+                    axes,
+                    -0.035,
+                    0.5,
+                    name,
+                    transform=axes.transAxes,
+                    rotation=90,
+                    ha="right",
+                    va="center",
+                    fontsize=10.5,
+                )
+
+    _text(figure, 0.045, 0.94, title, fontsize=14, color=INK, weight="bold")
+    _text(figure, 0.045, 0.885, subtitle, fontsize=10.5)
+    scale = figure.add_axes([0.25, 0.105, 0.53, 0.024])
+    bar = figure.colorbar(filled, cax=scale, orientation="horizontal", ticks=levels)
+    bar.outline.set_visible(False)
+    scale.tick_params(colors=MUTED, labelsize=9, length=0, pad=4)
+    scale.xaxis.set_major_formatter(FuncFormatter(lambda value, _: f"{value:+,.10g}"))
+    for label in scale.get_xticklabels():
+        label.set_family(FONTS)
+    _text(figure, 0.515, 0.02, scale_label, ha="center", va="bottom", fontsize=9.5)
     return figure
