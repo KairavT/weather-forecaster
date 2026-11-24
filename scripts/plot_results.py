@@ -10,7 +10,9 @@ import argparse
 import json
 from pathlib import Path
 
-from weather_forecaster.plots import Panel, lead_time_chart
+import numpy as np
+
+from weather_forecaster.plots import Panel, lead_time_chart, rollout_gain_chart
 
 # short name -> (channel, panel title)
 FIELDS = {
@@ -30,7 +32,8 @@ def main() -> None:
     parser.add_argument("--out", type=Path, default=Path("figures"))
     args = parser.parse_args()
 
-    stepper = load(args.results / "stepper.json")["stepper"]
+    runs = load(args.results / "stepper.json")
+    stepper = runs["stepper"]
     persistence = load(args.results / "persistence_by_lead.json")
     baselines = load(args.results / "baselines.json")
     networks = load(args.results / "models.json")
@@ -58,6 +61,19 @@ def main() -> None:
     path = args.out / "lead_time.png"
     lead_time_chart(stepper["lead_hours"], panels).savefig(path)
     print(f"wrote {path}")
+
+    # drawn once the same network has also been trained without rollouts
+    without = runs.get("stepper-no-rollout")
+    if without:
+        if without["lead_hours"] != stepper["lead_hours"]:
+            raise SystemExit("the two stepper runs are scored at different lead times")
+        gains = {}
+        for short, (channel, _) in FIELDS.items():
+            ratio = np.array(stepper["test_rmse"][channel]) / without["test_rmse"][channel]
+            gains[short] = (100 * (1 - ratio)).tolist()
+        path = args.out / "rollout_gain.png"
+        rollout_gain_chart(stepper["lead_hours"], gains).savefig(path)
+        print(f"wrote {path}")
 
 
 if __name__ == "__main__":
