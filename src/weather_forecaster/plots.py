@@ -22,6 +22,8 @@ GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 BLUE = "#2a78d6"  # the model the chart is about
 ORANGE = "#eb6834"  # the model it is compared with
+# one colour per field, in this order, when several fields share a chart
+FIELD_COLOURS = [BLUE, ORANGE, "#1baf7a"]
 FONTS = ["Helvetica Neue", "Helvetica", "Arial", "DejaVu Sans"]
 # for maps of a difference: blue below zero, red above, light grey where there is none
 BELOW = ["#0d366b", "#1c5cab", "#3987e5", "#86b6ef", "#cde2fb"]
@@ -283,4 +285,64 @@ def forecast_maps(
     for label in scale.get_xticklabels():
         label.set_family(FONTS)
     _text(figure, 0.515, 0.02, scale_label, ha="center", va="bottom", fontsize=9.5)
+    return figure
+
+
+def rollout_gain_chart(lead_hours: list[int], gains: dict[str, list[float]]) -> Figure:
+    """How much lower the error is with rollout training, in percent, by lead time.
+
+    gains maps a field's name to 100 * (1 - error with rollouts / error without) at every
+    lead time, so a line above zero means rollouts helped at that lead time.
+    """
+    if len(gains) > len(FIELD_COLOURS):
+        raise ValueError(f"at most {len(FIELD_COLOURS)} fields fit on one chart")
+    days = np.asarray(lead_hours) / 24
+    figure = Figure(figsize=(7.6, 4.6), dpi=200, facecolor=SURFACE)
+    axes = figure.add_axes([0.085, 0.13, 0.76, 0.57])
+    _style_axes(axes)
+    axes.spines["bottom"].set_visible(False)  # the zero line is the baseline
+
+    values = np.array(list(gains.values()))
+    low, high = min(0.0, values.min()), max(0.0, values.max())
+    pad = 0.08 * (high - low or 1.0)
+    axes.set_ylim(low - pad if low < 0 else 0, high + pad)
+    axes.set_xlim(0, days[-1])
+    axes.set_xticks(np.arange(0, days[-1] + 1, 2))
+    axes.axhline(0, color=AXIS, linewidth=1)
+    axes.yaxis.set_major_locator(MaxNLocator(nbins=6, steps=[1, 2, 2.5, 5, 10]))
+    axes.yaxis.set_major_formatter(
+        FuncFormatter(lambda value, _: f"{value:+.10g}%" if round(value, 6) else "0%")
+    )
+    axes.set_xlabel("Lead time (days)", color=MUTED, fontsize=9.5, family=FONTS, labelpad=6)
+    for label in (*axes.get_xticklabels(), *axes.get_yticklabels()):
+        label.set_family(FONTS)
+
+    for (name, gain), colour in zip(gains.items(), FIELD_COLOURS):
+        axes.plot(days, gain, color=colour, linewidth=2, solid_capstyle="round", label=name)
+    # names go at the line ends only where they cannot be confused; the legend always has them
+    ends = values[:, -1]
+    if len(ends) == 1 or np.diff(np.sort(ends)).min() > 0.06 * (high - low + 2 * pad):
+        for name, end in zip(gains, ends):
+            _text(axes, days[-1] + 0.2, end, name, va="center", clip_on=False)
+
+    _text(figure, 0.085, 0.925, "What rollout training adds", fontsize=14, color=INK, weight="bold")
+    _text(
+        figure,
+        0.085,
+        0.885,
+        "How much lower the test error is when the stepper trains on rollouts than when\n"
+        "the same network trains on single steps only. Above zero, rollouts help.",
+        fontsize=10.5,
+        va="top",
+    )
+    axes.legend(
+        loc="lower left",
+        bbox_to_anchor=(-0.012, 1.04),
+        ncols=len(gains),
+        frameon=False,
+        handlelength=1.8,
+        columnspacing=1.8,
+        prop={"family": FONTS, "size": 10},
+        labelcolor=SECONDARY_INK,
+    )
     return figure

@@ -6,6 +6,11 @@
 This is hours of GPU time, so it is meant for a cloud GPU (see notebooks/kaggle_train.ipynb).
 Add --quick to check that everything runs: it trains for a few minutes on two years of data,
 which only needs 2014 to 2017 downloaded.
+
+To measure what rollout training adds, train the same network for the same 32 epochs on single
+steps only, under its own name so it is saved and scored next to the first run:
+
+    uv run python scripts/train_stepper.py --phases 1:32 --name stepper-no-rollout
 """
 
 import argparse
@@ -30,6 +35,8 @@ HEADLINE = {
     "T2M": ("2m_temperature", 2),
 }
 PRINT_DAYS = (1, 3, 5, 7, 10)
+PHASES = [(1, 16), (2, 6), (4, 6), (8, 4)]
+QUICK_PHASES = [(1, 2), (2, 1), (4, 1), (8, 1)]
 
 
 def parse_phases(text: str) -> list[tuple[int, int]]:
@@ -50,8 +57,13 @@ def main() -> None:
     parser.add_argument(
         "--phases",
         type=parse_phases,
-        default=[(1, 16), (2, 6), (4, 6), (8, 4)],
-        help="rollout steps and epochs per phase, like 1:16,2:6,4:6,8:4",
+        help="rollout steps and epochs per phase, default 1:16,2:6,4:6,8:4, or 1:2,2:1,4:1,8:1 "
+        "with --quick",
+    )
+    parser.add_argument(
+        "--name",
+        help="names the run folder and the results entry, default stepper, or stepper-quick "
+        "with --quick",
     )
     parser.add_argument("--lead-days", type=int, default=10, help="score out to this lead time")
     parser.add_argument("--max-hours", type=float, help="stop training early to fit this budget")
@@ -63,15 +75,14 @@ def main() -> None:
         "static": STATIC_FIELDS["forecast"],
         "width": args.width,
         "blocks": args.blocks,
-        "phases": args.phases,
+        "phases": args.phases or (QUICK_PHASES if args.quick else PHASES),
     }
     if args.quick:
         settings |= {
-            "phases": [(1, 2), (2, 1), (4, 1), (8, 1)],
             "train": ("2014-01-01T00", "2015-12-31T18"),
             "test": ("2017-01-01T00", "2017-12-31T18"),
         }
-    name = "stepper-quick" if args.quick else "stepper"
+    name = args.name or ("stepper-quick" if args.quick else "stepper")
     config = StepperConfig(**settings)
     data = LocalERA5(args.data)
     run_dir = args.runs / name

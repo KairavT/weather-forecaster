@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from weather_forecaster.plots import (
     Panel,
@@ -6,6 +7,7 @@ from weather_forecaster.plots import (
     crossing,
     forecast_maps,
     lead_time_chart,
+    rollout_gain_chart,
 )
 
 
@@ -59,3 +61,21 @@ def test_forecast_maps_draw_truth_above_forecast_for_every_lead_time(tmp_path):
     assert len(figure.axes) == 2 * 2 + 1  # two rows of maps and the colour scale
     figure.savefig(tmp_path / "maps.png")
     assert (tmp_path / "maps.png").stat().st_size > 10_000
+
+
+def test_rollout_gain_chart_draws_one_line_per_field(tmp_path):
+    gains = {"Z500": [5.0, 10.0, 20.0, 15.0], "T850": [2.0, -1.0, 4.0, 6.0]}
+    figure = rollout_gain_chart([6, 12, 18, 24], gains)
+    (axes,) = figure.axes
+    assert [line.get_label() for line in axes.get_lines() if line.get_label() in gains] == [
+        "Z500",
+        "T850",
+    ]
+    assert axes.get_ylim()[0] < -1 and axes.get_ylim()[1] > 20
+    figure.savefig(tmp_path / "gain.png")
+    assert (tmp_path / "gain.png").stat().st_size > 10_000
+
+
+def test_rollout_gain_chart_refuses_more_fields_than_colours():
+    with pytest.raises(ValueError, match="at most"):
+        rollout_gain_chart([6], {name: [1.0] for name in "ABCD"})
